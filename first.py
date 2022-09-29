@@ -1,44 +1,37 @@
 import cv2
 import numpy as np
+
 cap = cv2.VideoCapture('m2.mp4')
 
 # Check if camera opened successfully
-if (cap.isOpened()== False):
-  print("Error opening video stream or file")
+if (cap.isOpened() == False):
+    print("Error opening video stream or file")
 
 # Read until video is completed
-while(cap.isOpened()):
-  # Capture frame-by-frame
-  ret, frame = cap.read()
-  hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-  # Threshold of blue in HSV space
-  lower_blue = np.array([60, 0, 0])
-  upper_blue = np.array([180, 255, 255])
+while (cap.isOpened()):
+    ret, frame = cap.read()
+    height, width, _ = frame.shape
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    lower_blue = np.array([60, 0, 0])
+    upper_blue = np.array([180, 255, 255])
+    mask = cv2.inRange(hsv, lower_blue, upper_blue)
+    frame = cv2.bitwise_and(frame, frame, mask=mask)
+    mask = np.zeros((height + 2, width + 2), np.uint8)
+    cv2.floodFill(frame, mask, (0, 0), 1)
+    # canvas = frame[1:height + 1, 1:width + 1].astype(np.bool)
+    # frame = ~frame
+    if ret:
 
-  # preparing the mask to overlay
-  mask = cv2.inRange(hsv, lower_blue, upper_blue)
+        # Display the resulting frame
+        cv2.imshow('Frame', frame)
 
-  # The black region in the mask has the value of 0,
-  # so when multiplied with original image removes all non-blue regions
-  result = cv2.bitwise_and(frame, frame, mask=mask)
-  # blue_chanel = frame[:, :, 0]
-  # blue_img = np.zeros(frame.shape)
-  #
-  # # assign the red channel of src to empty image
-  # blue_img[:, :, 0] = blue_chanel
-  # frame=blue_chanel
-  if ret == True:
+        # Press Q on keyboard to  exit
+        if cv2.waitKey(25) & 0xFF == ord('q'):
+            break
 
-    # Display the resulting frame
-    cv2.imshow('Frame',result)
-
-    # Press Q on keyboard to  exit
-    if cv2.waitKey(25) & 0xFF == ord('q'):
-      break
-
-  # Break the loop
-  else:
-    break
+    # Break the loop
+    else:
+        break
 
 # When everything done, release the video capture object
 cap.release()
