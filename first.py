@@ -1,25 +1,39 @@
-import cv2
+from cv2 import cv2
 import numpy as np
 
+cv = cv2
 cap = cv2.VideoCapture('m2.mp4')
 
 # Check if camera opened successfully
-if (cap.isOpened() == False):
+if not cap.isOpened():
     print("Error opening video stream or file")
 
 # Read until video is completed
-while (cap.isOpened()):
+while cap.isOpened():
     ret, frame = cap.read()
     height, width, _ = frame.shape
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     lower_blue = np.array([60, 0, 0])
     upper_blue = np.array([180, 255, 255])
-    mask = cv2.inRange(hsv, lower_blue, upper_blue)
-    frame = cv2.bitwise_and(frame, frame, mask=mask)
-    mask = np.zeros((height + 2, width + 2), np.uint8)
-    cv2.floodFill(frame, mask, (0, 0), 1)
-    # canvas = frame[1:height + 1, 1:width + 1].astype(np.bool)
-    # frame = ~frame
+    mask_with_blue = cv2.inRange(hsv, lower_blue, upper_blue)
+    frame = cv2.bitwise_and(frame, frame, mask=mask_with_blue)
+
+    thresh = 20
+    # get threshold image
+    ret, thresh_img = cv2.threshold(frame[:, :, 0], thresh, 255, cv2.THRESH_BINARY)
+    contours, hierarchy = cv2.findContours(thresh_img, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    img_contours = np.zeros(frame.shape)
+    # draw the contours on the empty image
+    cv2.drawContours(img_contours, contours, -1, (0, 255, 0), thickness=3)
+    frame = img_contours
+
+    # mask = np.zeros((height + 2, width + 2), np.uint8)
+    # # cv2.rectangle(frame, (x, y), (x + w, y + h), color=(5, 65, 65), thickness=10)
+    # imgray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+    # ret, thresh = cv.threshold(imgray, 127, 255, 0)
+    # contours, hierarchy = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_NONE)
+    # cv.drawContours(frame, contours, -1, (0, 255, 0), 5)
+    # print(len(contours))
     if ret:
 
         # Display the resulting frame
