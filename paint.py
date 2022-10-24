@@ -10,7 +10,8 @@ mp_hands = mp.solutions.hands
 
 
 def get_distance(t1, t2):
-    return abs(t1[0] - t2[0]) + abs(t1[1] - t2[1])
+    return math.hypot(t1[0] - t2[0], t1[1] - t2[1])
+    # return abs(t1[0] - t2[0]) + abs()
 
 
 def fingers_are_connected(hand_landmarks, image) -> bool:
@@ -67,22 +68,64 @@ def overlay_transparent(background_img, img_to_overlay_t, x, y, overlay_size=Non
     return bg_img
 
 
-def add_point(image, hand_landmarks):
+def get_index_loc(image, hand_landmarks):
     lm = hand_landmarks.landmark
     thumb = lm[4]
     index = lm[8]
     x = int(index.x * image.shape[1])
     y = int(index.y * image.shape[0])
-    # Annotate landmarks or do whatever you want.
-    drawn_circles.add((x, y))
+    return x, y
 
 
-palete_logo = cv2.imread('palete.png', -1)
-palete_logo = cv2.resize(palete_logo, (64, 64), interpolation=cv2.INTER_AREA)
-palete_logo_h, palete_logo_w, _ = palete_logo.shape
+def is_in_rect(rw, rh, x, y):
+    return 0 <= x <= rw and 0 <= y <= rh
+
+
+def show_palette(image):
+    return overlay_transparent(image, palette, int((W - H) / 2), 0, (H, H))
+
+
+def get_color_bullet_points(image):
+    r = 160
+    colors_cnt = 10
+    angles = [2 * math.pi * angle_num / colors_cnt for angle_num in range(colors_cnt)]
+    return [(int(W / 2) + int(r * math.cos(a)), int(H / 2) + int(r * math.sin(a))) for a in angles]
+
+
+def pick_color(image, ilx, ily):
+    closest = None
+    picked_color = None
+    min_d = 10_000
+    bullet_points = get_color_bullet_points(image)
+    for (x, y) in bullet_points:
+        cv2.circle(image, (x, y), 20, (223, 190, 24), thickness=4)
+        if ilx and ily:  # в кадре есть указательный палец
+            d = get_distance((x, y), (ilx, ily))
+            if d < min_d and get_distance((ilx, ily), (W / 2, H / 2)) < 250:
+                min_d = d
+                closest = (x, y)
+                picked_color = tuple([int (a) for a in image[y, x]])
+                # raise Exception(picked_color)
+
+    if closest:
+        cv2.circle(image, closest, 20, (223, 190, 24), thickness=-1)
+    return image, picked_color
+
+
+# Annotate landmarks or do whatever you want.
+
+W = 640
+H = 480
+CURRENT_COLOR = (0, 0, 0)
+palette_logo = cv2.imread('palete.png', -1)
+palette = cv2.imread('full_palette.png', -1)
+palette_logo = cv2.resize(palette_logo, (64, 64), interpolation=cv2.INTER_AREA)
+palette = cv2.resize(palette, (H, H), interpolation=cv2.INTER_AREA)
+palette_logo_h, palette_logo_w, _ = palette_logo.shape
 drawn_circles = set()
 # For webcam input:
 fingers_connected = False
+SHOW_PALETTE = True  # TODO
 cap = cv2.VideoCapture(0)
 with mp_hands.Hands(
         model_complexity=0,
@@ -106,24 +149,37 @@ with mp_hands.Hands(
         # Draw the hand annotations on the image.
         image.flags.writeable = True
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        image = overlay_transparent(image, palette_logo, 0, 0, (palette_logo_w, palette_logo_h))
+        ilx, ily = None, None
+        fingers_connected = False
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:  # hand_landmarks - метки одной руки
                 mp_drawing.draw_landmarks(
                     image,
                     hand_landmarks,
                     # mp_hands.HAND_CONNECTIONS,
-                    list({(3, 4)}),
+                    list({(3, 4), (7, 8)}),
                     mp_drawing_styles.get_default_hand_landmarks_style(),
                     mp_drawing_styles.get_default_hand_connections_style())
+            ilx, ily = get_index_loc(image, hand_landmarks=results.multi_hand_landmarks[0])
             fingers_connected = fingers_are_connected(results.multi_hand_world_landmarks[0], image)
-            if fingers_connected:
-                add_point(image, results.multi_hand_landmarks[0])
-        for x, y in drawn_circles:
-            cv2.circle(image, (x, y), 5, (0, 0, 0), -1)
 
-            # print(mp_hands.HAND_CONNECTIONS)
-        # Flip the image horizontally for a selfie-view display.
-        image = overlay_transparent(image, palete_logo, 0, 0, (palete_logo_w, palete_logo_h))
+        if not SHOW_PALETTE and fingers_connected:
+            if is_in_rect(palette_logo_w, palette_logo_h, ilx, ily):
+                SHOW_PALETTE = True
+            else:
+                drawn_circles.add((ilx, ily, CURRENT_COLOR))
+        if SHOW_PALETTE:
+            image = show_palette(image)
+            image, picked_color = pick_color(image, ilx, ily)
+            if picked_color is not None and fingers_connected:
+                SHOW_PALETTE = False
+                CURRENT_COLOR = picked_color
+
+        if not SHOW_PALETTE:
+            for x, y, color in drawn_circles:
+                cv2.circle(image, (x, y), 5, color, -1)
+
         # image[0:palete_logo_h, 0:palete_logo_w] = palete_logo
         cv2.imshow('MediaPipe Hands', cv2.flip(image, 1))
         if cv2.waitKey(5) & 0xFF == 27:
