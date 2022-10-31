@@ -3,6 +3,7 @@ import math
 from cv2 import cv2
 import numpy as np
 import mediapipe as mp
+import time
 
 mp_drawing = mp.solutions.drawing_utils
 mp_drawing_styles = mp.solutions.drawing_styles
@@ -104,12 +105,26 @@ def pick_color(image, ilx, ily):
             if d < min_d and get_distance((ilx, ily), (W / 2, H / 2)) < 250:
                 min_d = d
                 closest = (x, y)
-                picked_color = tuple([int (a) for a in image[y, x]])
+                picked_color = tuple([int(a) for a in image[y, x]])
                 # raise Exception(picked_color)
 
     if closest:
         cv2.circle(image, closest, 20, (223, 190, 24), thickness=-1)
     return image, picked_color
+
+
+def get_circles_btwn(ax, ay, bx, by):
+    d = get_distance((ax, ay), (bx, by))
+    mdl = 3#mini delta length
+    res = []
+    dots_count = int(d / mdl)
+    if dots_count==0:
+        return []
+    mini_delta_x = (bx - ax) / dots_count
+    mini_delta_y = (by - ay) / dots_count
+    for i in range(1, dots_count):
+        res.append((int(ax + i * mini_delta_x), int(ay + i * mini_delta_y)))
+    return res
 
 
 # Annotate landmarks or do whatever you want.
@@ -122,10 +137,12 @@ palette = cv2.imread('full_palette.png', -1)
 palette_logo = cv2.resize(palette_logo, (64, 64), interpolation=cv2.INTER_AREA)
 palette = cv2.resize(palette, (H, H), interpolation=cv2.INTER_AREA)
 palette_logo_h, palette_logo_w, _ = palette_logo.shape
-drawn_circles = set()
+drawn_circles = []
 # For webcam input:
 fingers_connected = False
-SHOW_PALETTE = True  # TODO
+palette_closed_time = time.time()
+
+SHOW_PALETTE = False
 cap = cv2.VideoCapture(0)
 with mp_hands.Hands(
         model_complexity=0,
@@ -167,18 +184,24 @@ with mp_hands.Hands(
         if not SHOW_PALETTE and fingers_connected:
             if is_in_rect(palette_logo_w, palette_logo_h, ilx, ily):
                 SHOW_PALETTE = True
-            else:
-                drawn_circles.add((ilx, ily, CURRENT_COLOR))
+            elif time.time() - palette_closed_time > 2:
+                if drawn_circles:
+                    lx, ly, _, lt = drawn_circles[-1]
+                    if time.time() - lt < 0.1:  # too much
+                        for bx, by in get_circles_btwn(lx, ly, ilx, ily):
+                            drawn_circles.append((bx, by, CURRENT_COLOR, time.time()))
+                drawn_circles.append((ilx, ily, CURRENT_COLOR, time.time()))
         if SHOW_PALETTE:
             image = show_palette(image)
             image, picked_color = pick_color(image, ilx, ily)
             if picked_color is not None and fingers_connected:
                 SHOW_PALETTE = False
+                palette_closed_time = time.time()
                 CURRENT_COLOR = picked_color
 
         if not SHOW_PALETTE:
-            for x, y, color in drawn_circles:
-                cv2.circle(image, (x, y), 5, color, -1)
+            for x, y, color, time_drawn in drawn_circles:
+                cv2.circle(image, (x, y), 3, color, -1)
 
         # image[0:palete_logo_h, 0:palete_logo_w] = palete_logo
         cv2.imshow('MediaPipe Hands', cv2.flip(image, 1))
